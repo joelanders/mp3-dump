@@ -23,9 +23,45 @@ else
 end
 
 # most sig. bit in each byte is 0 and ignored
-# tag header size not incl., so + 10 bytes
-id3_size = id3_header[6..9].map {|byte| "%07b" % byte}.join('').to_i(2) + 10
+# header size not incl., so + 10 bytes
+class Array
+  def to_id3_size
+    self.map {|byte| "%07b" % byte}.join('').to_i(2) + 10
+  end
+end
+
+id3_size = id3_header[6..9].to_id3_size
 puts "id3 byte size: " + id3_size.to_s
+
+# this is the whole id3 tag
+id3_tag = file[0...id3_size]
+
+class Id3Frame
+  attr_accessor :header, :ident, :size, :body
+  def self.from_bytes(bytes)
+    frame = self.new(bytes)
+    return frame if frame.ident.match /[A-Z0-9]{4}/
+    return nil
+  end
+  def initialize(bytes)
+    @header = bytes[0..9]
+    @ident  = header[0..3].pack('C*')
+    @size   = header[4..7].to_id3_size
+    @body   = bytes[0...(size+10)]
+  end
+end
+
+id3_frames = []
+rem_bytes = id3_tag[10..-1]
+while rem_bytes
+  new_frame = Id3Frame.from_bytes(rem_bytes)
+  break unless new_frame
+  id3_frames << new_frame
+  rem_bytes = rem_bytes[new_frame.size..-1]
+end
+
+puts "num of id3_frames: #{id3_frames.count}"
+puts "id3 identifiers: #{id3_frames.map(&:ident).join(', ')}"
 
 # this is everything after the id3 tag
 body = file[id3_size..-1]
