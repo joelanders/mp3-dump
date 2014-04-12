@@ -66,57 +66,67 @@ puts "id3 identifiers: #{id3_frames.map(&:ident).join(', ')}"
 # this is everything after the id3 tag
 body = file[id3_size..-1]
 
-frame_header_ary = body[0..3]
-puts
-puts "first frame header: " + frame_header_ary.ary_to_hex
-
-# doing bit-checks like this feels kinda bad.
-frame_header_bin = frame_header_ary.map {|byte| "%08b" % byte}.join('')
-
-# checking the first 11 bits are 1s
-if frame_header_bin[0..10].to_i(2) == 2047
-  puts "the sync bits are in place"
-else
-  puts "the sync bits are not in place"
-  exit
+class Mp3Frame
+  attr_accessor :header, :header_bin, :version, :layer, :bitrate
+  attr_accessor :sampling, :padding, :channel, :size
+  def self.from_bytes(bytes)
+    frame = self.new(bytes)
+    return frame if frame.sync_bits_good?
+    return nil
+  end
+  def sync_bits_good?
+    # checking first 11 bits are 1s
+    header_bin[0..10].to_i(2) == 2047
+  end
+  def initialize(bytes)
+    @header = bytes[0..3]
+    # doing bit-checks like this feels kinda bad.
+    @header_bin = header.map {|byte| "%08b" % byte}.join('')
+    @version =  MPEG_VERSION[header_bin[11..12].to_i(2)]
+    @layer =      MPEG_LAYER[header_bin[13..14].to_i(2)]
+    @crc =                   header_bin[15].to_i(2)
+    @bitrate = MP2L3_BITRATE[header_bin[16..19].to_i(2)]
+    @sampling =   MP2_SAMPLE[header_bin[20..21].to_i(2)]
+    @padding =               header_bin[22].to_i(2)
+    @channel =       CHANNEL[header_bin[24..25].to_i(2)]
+    # http://www.datavoyage.com/mpgscript/mpeghdr.htm says:
+    #   1152 samples per frame in layer 3
+    #   bits-per-second / samples-per-second gives bits-per-sample
+    #   1152 * bits-per-sample = bits-per-frame
+    #   bits-per-frame / 8 + padding gives bytes-per-frame
+    #   truncates down
+    # looking at other source code, looks like mp2l3, mp2.5l3 frames
+    # are half that size.
+    @size = ((72000.0*bitrate)/sampling + padding).to_i
+  end
 end
 
-mpeg_version = frame_header_bin[11..12].to_i(2)
-print "MPEG Version " + MPEG_VERSION[mpeg_version]
+first_frame = Mp3Frame.from_bytes body
 
-mpeg_layer = frame_header_bin[13..14].to_i(2)
-puts ", Layer " + MPEG_LAYER[mpeg_layer]
+puts
+puts "first frame header: #{first_frame.header.ary_to_hex}"
+puts "MPEG Version #{first_frame.version}, Layer #{first_frame.layer}"
+puts "bitrate: #{first_frame.bitrate}kbps"
+puts "sampling rate: #{first_frame.sampling}Hz"
+puts "padding: #{first_frame.padding} bytes"
+puts "channel: #{first_frame.channel}"
+puts "frame size: #{first_frame.size}"
 
-crc_protected = frame_header_bin[15]
-
-bit_key = frame_header_bin[16..19].to_i(2)
-bitrate = MP2L3_BITRATE[bit_key]
-puts "bitrate: " + bitrate.to_s + "kbps"
-
-samp_key = frame_header_bin[20..21].to_i(2)
-sampling_rate = MP2_SAMPLE[samp_key]
-puts "sampling rate: " + sampling_rate.to_s + "Hz"
-
-# layers 2&3: this means there is an extra byte
-padding = frame_header_bin[22].to_i(2)
-puts "padding: #{padding} bytes"
-
-channel_bin = frame_header_bin[24..25].to_i(2)
-channel = CHANNEL[channel_bin]
-puts "channel: #{channel}"
-
-# http://www.datavoyage.com/mpgscript/mpeghdr.htm says:
-#   1152 samples per frame in layer 3
-#   bits-per-second / samples-per-second gives bits-per-sample
-#   1152 * bits-per-sample = bits-per-frame
-#   bits-per-frame / 8 + padding gives bytes-per-frame
-#   truncates down
-# looking at other source code, looks like mp2l3, mp2.5l3 frames
-# are half that size.
-
-frame_bytes = ((72000.0*bitrate)/sampling_rate + padding).to_i
-puts "frame bytes: #{frame_bytes}"
-
+frame_bytes = first_frame.size
 puts "id3 + first frame size = #{id3_size + frame_bytes}"
 
 puts "next frame: #{body[frame_bytes-2..frame_bytes+2].ary_to_hex}"
+
+mp3_frames = [first_frame]
+rem_bytes = body[first_frame.size..-1]
+while rem_bytes
+  new_frame = Mp3Frame.from_bytes(rem_bytes)
+  break unless new_frame
+  mp3_frames << new_frame
+  rem_bytes = rem_bytes[new_frame.size..-1]
+end
+
+puts
+puts "num of mp3_frames: #{mp3_frames.count}"
+puts "at 38fps, that's #{mp3_frames.count / 38.0} seconds"
+puts "bytes remaining: #{rem_bytes.count}"

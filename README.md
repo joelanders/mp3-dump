@@ -12,14 +12,16 @@ num of id3_frames: 11
 id3 identifiers: TIT2, TPE1, TCON, TDRC, APIC, PRIV, PRIV, TCOP, TLAN, TPUB, TXXX
 
 first frame header: ff f2 52 50
-the sync bits are in place
 MPEG Version 2, Layer 3
 bitrate: 40kbps
 sampling rate: 22050Hz
 padding: 1 bytes
 channel: joint stereo
-frame bytes: 131
+frame size: 131
 id3 + first frame size = 9747
 next frame: 53 80 ff f2 50
 
+num of mp3_frames: 239
+at 38fps, that's 6.2894736842105265 seconds
+bytes remaining: 128
 ```
