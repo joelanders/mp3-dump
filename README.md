@@ -2,6 +2,12 @@ I grabbed this thomasedison.mp3 file from [archive.org](https://archive.org/deta
 This only works for Version 2, Layer 3 right now.
 Not sure what I'll do with it.
 
+remix.mp3 is the result of grouping the frames into segments of 20
+frames each, then repeating each segment three times, then writing
+the file back out. I'm not really allowed to play frames out-of-order
+(look up "byte reservoir"), and VLC gives errors, but it will play!
+
+
 output:
 ```
 file byte size: 40960
@@ -25,3 +31,5 @@ num of mp3_frames: 239
 at 38fps, that's 6.2894736842105265 seconds
 bytes remaining: 128
 ```
+
+code is MIT Licensed

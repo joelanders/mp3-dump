@@ -1,6 +1,7 @@
 #!/bin/env ruby
 
 require './mp3_spec.rb'
+require 'pry'
 
 public
 def ary_to_hex
@@ -37,7 +38,7 @@ puts "id3 byte size: " + id3_size.to_s
 id3_tag = file[0...id3_size]
 
 class Id3Frame
-  attr_accessor :header, :ident, :size, :body
+  attr_accessor :header, :ident, :size, :raw
   def self.from_bytes(bytes)
     frame = self.new(bytes)
     return frame if frame.ident.match /[A-Z0-9]{4}/
@@ -47,7 +48,7 @@ class Id3Frame
     @header = bytes[0..9]
     @ident  = header[0..3].pack('C*')
     @size   = header[4..7].to_id3_size
-    @body   = bytes[0...(size+10)]
+    @raw    = bytes[0...size]
   end
 end
 
@@ -68,7 +69,7 @@ body = file[id3_size..-1]
 
 class Mp3Frame
   attr_accessor :header, :header_bin, :version, :layer, :bitrate
-  attr_accessor :sampling, :padding, :channel, :size
+  attr_accessor :sampling, :padding, :channel, :size, :raw
   def self.from_bytes(bytes)
     frame = self.new(bytes)
     return frame if frame.sync_bits_good?
@@ -98,6 +99,7 @@ class Mp3Frame
     # looking at other source code, looks like mp2l3, mp2.5l3 frames
     # are half that size.
     @size = ((72000.0*bitrate)/sampling + padding).to_i
+    @raw = bytes[0...size]
   end
 end
 
@@ -130,3 +132,31 @@ puts
 puts "num of mp3_frames: #{mp3_frames.count}"
 puts "at 38fps, that's #{mp3_frames.count / 38.0} seconds"
 puts "bytes remaining: #{rem_bytes.count}"
+
+remixed = []
+# I'm ignoring some part of the original id3 tag that I can't parse.
+# In order to reconstruct the tag from the parts I *can* parse, I'd
+# need to reconstruct the total id3 tag size. Temp fix here.
+#remixed += id3_header
+#remixed += id3_frames.map(&:raw).flatten
+remixed += id3_tag
+
+#remixed += mp3_frames.reverse.map(&:raw).flatten #sounds awful!
+
+# this is nasty looking. I'm taking frames 0-19, repeating them 3x,
+# then taking frames 20-39, repeating them 3x, etc.
+chunk = 20
+reps = 3
+num = mp3_frames.count / chunk
+evil_frames = []
+
+(0...num).each do |i|
+  evil_frames.concat( (0...chunk).map{|j| mp3_frames[(chunk*i)+j]} * reps )
+end
+evil_frames.concat( mp3_frames[(chunk*num)..-1]*reps )
+
+remixed += evil_frames.map(&:raw).flatten
+remixed += rem_bytes
+
+
+IO.write('remix.mp3', remixed.pack('C*'))
